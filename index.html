@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Doctor</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0e0e0f;
+      --surface: #161618;
+      --surface2: #1e1e21;
+      --border: #2a2a2e;
+      --accent: #00ff88;
+      --accent2: #00ccff;
+      --text: #e8e8e8;
+      --text-muted: #555;
+      --danger: #ff4455;
+      --warn: #ffaa00;
+      --nav-h: 48px;
+      --keys-h: 52px;
+      --header-h: 44px;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+    #header { height: var(--header-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 14px; flex-shrink: 0; }
+    #logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 17px; color: var(--accent); letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
+    #logo-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); animation: blink 2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    #status { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    #conn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
+    #conn-dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    #conn-dot.error { background: var(--danger); }
+    #nav-bar { height: var(--nav-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 4px; padding: 0 8px; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
+    #nav-bar::-webkit-scrollbar { display: none; }
+    .nav-key { height: 34px; min-width: 44px; padding: 0 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); border-radius: 7px; font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; white-space: nowrap; flex-shrink: 0; transition: background 0.1s, border-color 0.1s, transform 0.08s; user-select: none; -webkit-user-select: none; }
+    .nav-key:active { background: var(--accent); color: #000; border-color: var(--accent); transform: scale(0.95); }
+    .nav-key.ctrl { color: var(--accent); border-color: var(--accent); }
+    .nav-key.danger { color: var(--danger); border-color: var(--danger); }
+    .nav-key.special { color: var(--accent2); border-color: var(--accent2); }
+    .divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; margin: 0 2px; }
+    #terminal-wrap { flex: 1; overflow: hidden; padding: 6px; }
+    #terminal { width: 100%; height: 100%; }
+    .xterm { height: 100% !important; }
+    #keys-bar { height: var(--keys-h); background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 4px; padding: 0 8px; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+    #keys-bar::-webkit-scrollbar { display: none; }
+    #toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 16px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 100; white-space: nowrap; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="logo"><div id="logo-dot"></div>Doctor</div>
+    <div id="status"><div id="conn-dot"></div><span id="conn-label">connecting...</span></div>
+  </div>
+  <div id="nav-bar">
+    <button class="nav-key danger" onclick="sendKey('c', true)">^C</button>
+    <button class="nav-key ctrl" onclick="sendKey('d', true)">^D</button>
+    <button class="nav-key ctrl" onclick="sendKey('z', true)">^Z</button>
+    <button class="nav-key ctrl" onclick="sendKey('l', true)">^L</button>
+    <button class="nav-key ctrl" onclick="sendKey('a', true)">^A</button>
+    <button class="nav-key ctrl" onclick="sendKey('e', true)">^E</button>
+    <button class="nav-key ctrl" onclick="sendKey('u', true)">^U</button>
+    <button class="nav-key ctrl" onclick="sendKey('k', true)">^K</button>
+    <div class="divider"></div>
+    <button class="nav-key ctrl" onclick="sendKey('b', true)">^B</button>
+    <button class="nav-key special" onclick="sendRaw('%')">tmux%</button>
+    <button class="nav-key special" onclick="sendRaw('&quot;')">tmux"</button>
+    <div class="divider"></div>
+    <button class="nav-key" onclick="sendEscape()">ESC</button>
+    <button class="nav-key" onclick="sendTab()">TAB</button>
+    <button class="nav-key" onclick="sendRaw('\r')">↵</button>
+  </div>
+  <div id="terminal-wrap"><div id="terminal"></div></div>
+  <div id="keys-bar">
+    <button class="nav-key" onclick="sendArrow('A')">▲</button>
+    <button class="nav-key" onclick="sendArrow('B')">▼</button>
+    <button class="nav-key" onclick="sendArrow('D')">◀</button>
+    <button class="nav-key" onclick="sendArrow('C')">▶</button>
+    <div class="divider"></div>
+    <button class="nav-key" onclick="sendRaw('\x7f')">DEL</button>
+    <button class="nav-key" onclick="sendRaw('\x1b[H')">HOME</button>
+    <button class="nav-key" onclick="sendRaw('\x1b[F')">END</button>
+    <button class="nav-key" onclick="sendRaw('\x1b[5~')">PgUp</button>
+    <button class="nav-key" onclick="sendRaw('\x1b[6~')">PgDn</button>
+    <div class="divider"></div>
+    <button class="nav-key special" onclick="pasteClipboard()">Paste</button>
+    <button class="nav-key special" onclick="clearTerminal()">Clear</button>
+  </div>
+</div>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+<script>
+  const term = new Terminal({
+    cursorBlink: true, fontSize: 13,
+    fontFamily: "'JetBrains Mono', monospace",
+    theme: {
+      background:'#0e0e0f', foreground:'#e8e8e8', cursor:'#00ff88',
+      black:'#1a1a1e', red:'#ff4455', green:'#00ff88', yellow:'#ffaa00',
+      blue:'#00ccff', magenta:'#cc88ff', cyan:'#00ffcc', white:'#e8e8e8',
+      brightBlack:'#444', brightRed:'#ff6677', brightGreen:'#33ffaa',
+      brightYellow:'#ffcc33', brightBlue:'#33ddff', brightMagenta:'#dd99ff',
+      brightCyan:'#33ffdd', brightWhite:'#ffffff',
+    },
+    scrollback: 5000,
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+  term.loadAddon(fitAddon);
+  term.loadAddon(webLinksAddon);
+  term.open(document.getElementById('terminal'));
+  fitAddon.fit();
+  let ws = null;
+  function setStatus(state, label) {
+    document.getElementById('conn-dot').className = state;
+    document.getElementById('conn-label').textContent = label;
+  }
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => { setStatus('connected', 'connected'); sendResize(); };
+    ws.onmessage = (evt) => {
+      if (typeof evt.data === 'string') {
+        if (evt.data[0] === '0') term.write(evt.data.slice(1));
+      } else {
+        const arr = new Uint8Array(evt.data);
+        if (arr[0] === 0x30) term.write(new TextDecoder().decode(arr.slice(1)));
+      }
+    };
+    ws.onclose = () => { setStatus('error', 'disconnected — reconnecting...'); setTimeout(connect, 2000); };
+    ws.onerror = () => setStatus('error', 'error');
+  }
+  function sendResize() {
+    if (ws?.readyState === WebSocket.OPEN)
+      ws.send('1' + JSON.stringify({ columns: term.cols, rows: term.rows }));
+  }
+  function sendRaw(data) { if (ws?.readyState === WebSocket.OPEN) ws.send('0' + data); }
+  term.onData(data => sendRaw(data));
+  new ResizeObserver(() => { fitAddon.fit(); sendResize(); }).observe(document.getElementById('terminal-wrap'));
+  function sendKey(key, ctrl) { sendRaw(ctrl ? String.fromCharCode(key.charCodeAt(0) - 96) : key); }
+  function sendArrow(dir) { sendRaw(`\x1b[${dir}`); }
+  function sendEscape() { sendRaw('\x1b'); }
+  function sendTab() { sendRaw('\t'); }
+  function clearTerminal() { sendRaw('\x0c'); }
+  async function pasteClipboard() {
+    try { sendRaw(await navigator.clipboard.readText()); showToast('Pasted!'); }
+    catch(e) { showToast('Allow clipboard permission first'); }
+  }
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  }
+  connect();
+</script>
+</body>
+    </html>
